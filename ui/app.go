@@ -3,26 +3,30 @@ package ui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/MrKarma84/curly/ui/panels"
 )
 
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7C3AED")).
-			MarginBottom(1)
-
-	subtitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6B7280")).
-			Italic(true)
-
-	hintStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#374151")).
-			MarginTop(2)
+const (
+	panelMethod = iota
+	panelURL
+	panelHeaders
+	panelResponse
+	panelCount
 )
+
+const methodWidth = 14
+const topHeight = 3
+
+var hintSt = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 
 type Model struct {
-	width  int
-	height int
+	width    int
+	height   int
+	focused  int
+	method   panels.MethodPanel
+	url      panels.URLPanel
+	headers  panels.HeadersPanel
+	response panels.ResponsePanel
 }
 
 func New() Model {
@@ -42,17 +46,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "tab":
+			m.focused = (m.focused + 1) % panelCount
+		case "shift+tab":
+			m.focused = (m.focused - 1 + panelCount) % panelCount
 		}
 	}
 	return m, nil
 }
 
 func (m Model) View() string {
-	title := titleStyle.Render("curly")
-	subtitle := subtitleStyle.Render("A keyboard-driven TUI HTTP client")
-	hint := hintStyle.Render("Press q to quit")
+	if m.width == 0 {
+		return ""
+	}
 
-	content := lipgloss.JoinVertical(lipgloss.Center, title, subtitle, hint)
+	bottomHeight := m.height - topHeight - 1
+	headersWidth := m.width / 2
+	responseWidth := m.width - headersWidth
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.method.View(methodWidth, topHeight, m.focused == panelMethod),
+		m.url.View(m.width-methodWidth, topHeight, m.focused == panelURL),
+	)
+
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.headers.View(headersWidth, bottomHeight, m.focused == panelHeaders),
+		m.response.View(responseWidth, bottomHeight, m.focused == panelResponse),
+	)
+
+	hint := hintSt.Render("Tab · next panel   Shift+Tab · prev   q · quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left, topRow, bottomRow, hint)
 }
