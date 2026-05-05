@@ -270,6 +270,78 @@ s = append(s[:i], s[i+1:]...)
 // ...     → unpacks the slice as individual arguments to append()
 ```
 
+### encoding/json
+
+Two essential functions for working with JSON in Go:
+
+```go
+// Serialize Go value → JSON bytes
+b, err := json.Marshal(map[string]any{
+    "name": "John",
+    "age":  30,
+    "active": true,
+})
+// b = []byte(`{"active":true,"age":30,"name":"John"}`)
+
+// Deserialize JSON → Go value
+var obj map[string]any
+err := json.Unmarshal([]byte(`{"name":"John"}`), &obj)
+// obj["name"] = "John"  (type: string)
+// obj["age"]  = 30.0    (JSON numbers → float64 in Go)
+```
+
+### any (interface{})
+
+`any` is an alias for `interface{}` — a type that accepts any value:
+
+```go
+var x any = "hello"   // string
+x = 42                // now int
+x = true              // now bool
+x = nil               // now nil
+```
+
+Used when you don't know the type in advance (e.g., parsing JSON).
+
+### Type switch
+
+When you have an `any` and need to handle each type differently:
+
+```go
+func formatValue(v any) string {
+    switch val := v.(type) {
+    case string:
+        return val
+    case float64:                              // JSON numbers are always float64
+        return strconv.FormatFloat(val, 'f', -1, 64)
+    case bool:
+        if val { return "true" }
+        return "false"
+    case nil:
+        return "null"
+    default:
+        return fmt.Sprintf("%v", val)
+    }
+}
+```
+
+### Variable shadowing
+
+A subtle bug we fixed: using the same name for a parameter and a local variable:
+
+```go
+// ❌ bug — body (param) and body (local var) clash
+func Send(method, url, body string, ...) Response {
+    body, err := io.ReadAll(resp.Body)  // tries to redeclare body
+}
+
+// ✅ fix — rename the local variable
+func Send(method, url, body string, ...) Response {
+    raw, err := io.ReadAll(resp.Body)
+    Body: strings.TrimSpace(string(raw)),
+}
+```
+
 ### Lip Gloss — terminal styling
 
 Lip Gloss lets you style terminal output like CSS:
@@ -295,8 +367,8 @@ output := style.Render("hello")        // returns a styled string
 | 3 | HTTP method selector | ✅ done |
 | 4 | URL input + send GET request | ✅ done |
 | 5 | Headers editor | ✅ done |
-| 6 | Body + schema detection | 🔜 next |
-| 7 | Navigable history | ⬜ |
+| 6 | Body + schema detection | ✅ done |
+| 7 | Navigable history | 🔜 next |
 | 8 | Replay & diff | ⬜ |
 | 9 | Collections | ⬜ |
 | 10 | Environment variables | ⬜ |
