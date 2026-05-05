@@ -167,6 +167,52 @@ m.focused = (m.focused + 1) % panelCount
 // 0 → 1 → 2 → 3 → 0 → 1 → …
 ```
 
+### Goroutines & async commands (Bubble Tea)
+
+In a TUI, you can't block the UI thread to wait for an HTTP response.
+Bubble Tea solves this with **commands** (`tea.Cmd`) — functions that run in the background
+and send a message when done:
+
+```go
+// A Cmd is just a function that returns a Msg
+func doRequest(method, url string) tea.Cmd {
+    return func() tea.Msg {           // ← runs in a goroutine automatically
+        resp := httpclient.Send(...)  // blocks here, but UI stays responsive
+        return ResponseMsg(resp)      // sends the result back to Update()
+    }
+}
+
+// Triggered by Ctrl+R in Update():
+return m, doRequest(m.method.Selected(), m.url.Value())
+
+// When the goroutine finishes, Update() receives:
+case ResponseMsg:
+    m.response = m.response.SetResponse(httpclient.Response(msg))
+```
+
+### Type aliases
+
+`type ResponseMsg httpclient.Response` creates a **distinct type** from `httpclient.Response`.
+This lets Bubble Tea route the message to the right `case` in `Update()`:
+
+```go
+case ResponseMsg:   // ✅ only matches ResponseMsg
+    // handle it
+
+case httpclient.Response:  // ← would never match — different type
+```
+
+### defer
+
+`defer` schedules a function call to run when the enclosing function returns,
+no matter what (even on error). Used to close resources:
+
+```go
+resp, err := client.Do(req)
+defer resp.Body.Close()  // always runs when Send() returns
+                         // without this, the connection leaks
+```
+
 ### Slices
 
 A **slice** is an ordered, resizable list — the most common collection in Go:
@@ -240,8 +286,8 @@ output := style.Render("hello")        // returns a styled string
 | 1 | Scaffolding & Hello World TUI | ✅ done |
 | 2 | Basic layout + panel navigation | ✅ done |
 | 3 | HTTP method selector | ✅ done |
-| 4 | URL input + send GET request | 🔜 next |
-| 5 | Headers editor | ⬜ |
+| 4 | URL input + send GET request | ✅ done |
+| 5 | Headers editor | 🔜 next |
 | 6 | Body + schema detection | ⬜ |
 | 7 | Navigable history | ⬜ |
 | 8 | Replay & diff | ⬜ |
