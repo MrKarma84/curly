@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+
 type Response struct {
 	StatusCode int
 	Status     string
@@ -15,10 +16,21 @@ type Response struct {
 	Err        string
 }
 
-func Send(method, url string, headers map[string]string) Response {
+func Send(method, url, body string, headers map[string]string) Response {
 	start := time.Now()
 
-	req, err := http.NewRequest(method, url, nil)
+	var bodyReader io.Reader
+	if body != "" {
+		bodyReader = strings.NewReader(body)
+		if headers == nil {
+			headers = make(map[string]string)
+		}
+		if _, ok := headers["Content-Type"]; !ok {
+			headers["Content-Type"] = "application/json"
+		}
+	}
+
+	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
 		return Response{Err: err.Error()}
 	}
@@ -34,7 +46,7 @@ func Send(method, url string, headers map[string]string) Response {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return Response{Err: err.Error(), Duration: time.Since(start)}
 	}
@@ -42,7 +54,7 @@ func Send(method, url string, headers map[string]string) Response {
 	return Response{
 		StatusCode: resp.StatusCode,
 		Status:     resp.Status,
-		Body:       strings.TrimSpace(string(body)),
+		Body:       strings.TrimSpace(string(raw)),
 		Duration:   time.Since(start),
 	}
 }

@@ -11,6 +11,7 @@ const (
 	panelMethod = iota
 	panelURL
 	panelHeaders
+	panelBody
 	panelResponse
 	panelCount
 )
@@ -23,10 +24,21 @@ const (
 var hintSt = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 
 type ResponseMsg httpclient.Response
+type InferSchemaMsg string
 
-func doRequest(method, url string, headers map[string]string) tea.Cmd {
+func doRequest(method, url, body string, headers map[string]string) tea.Cmd {
 	return func() tea.Msg {
-		return ResponseMsg(httpclient.Send(method, url, headers))
+		return ResponseMsg(httpclient.Send(method, url, body, headers))
+	}
+}
+
+func inferSchema(url string) tea.Cmd {
+	return func() tea.Msg {
+		resp := httpclient.Send("GET", url, "", nil)
+		if resp.Err != "" || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil
+		}
+		return InferSchemaMsg(resp.Body)
 	}
 }
 
@@ -37,6 +49,7 @@ type Model struct {
 	method   panels.MethodPanel
 	url      panels.URLPanel
 	headers  panels.HeadersPanel
+	body     panels.BodyPanel
 	response panels.ResponsePanel
 }
 
@@ -45,11 +58,32 @@ func New() Model {
 		method:  panels.NewMethodPanel(),
 		url:     panels.NewURLPanel(),
 		headers: panels.NewHeadersPanel(),
+		body:    panels.NewBodyPanel(),
 	}
 }
 
 func (m Model) Init() tea.Cmd {
 	return nil
+}
+
+func (m Model) bodyActive() bool {
+	return m.body.IsActive(m.method.Selected())
+}
+
+func (m Model) nextPanel() int {
+	next := (m.focused + 1) % panelCount
+	if next == panelBody && !m.bodyActive() {
+		next = (next + 1) % panelCount
+	}
+	return next
+}
+
+func (m Model) prevPanel() int {
+	prev := (m.focused - 1 + panelCount) % panelCount
+	if prev == panelBody && !m.bodyActive() {
+		prev = (prev - 1 + panelCount) % panelCount
+	}
+	return prev
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -61,7 +95,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ResponseMsg:
 		m.response = m.response.SetResponse(httpclient.Response(msg))
 
+	case InferSchemaMsg:
+		m.body = m.body.InferFrom(string(msg))
+
 	case tea.KeyMsg:
+		// Let editing panels intercept Tab/Shift+Tab
+		if (m.focused == panelHeaders && m.headers.IsEditing()) ||
+			(m.focused == panelBody && m.body.IsEditing()) {
+			return m.updateFocused(msg)
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -72,18 +115,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.response = m.response.SetLoading()
-			return m, doRequest(m.method.Selected(), url, m.headers.Headers())
+			body := ""
+			if m.bodyActive() {
+				body = m.body.Body()
+			}
+			return m, doRequest(m.method.Selected(), url, body, m.headers.Headers())
+
+		case "i":
+			if m.focused == panelBody && m.bodyActive() && m.url.Value() != "" {
+				return m, inferSchema(m.url.Value())
+			}
 
 		case "tab":
-			if m.focused == panelHeaders && m.headers.IsEditing() {
-				var cmd tea.Cmd
-				m.headers, cmd = m.headers.Update(msg)
-				return m, cmd
-			}
 			if m.focused == panelURL {
 				m.url = m.url.Blur()
 			}
-			m.focused = (m.focused + 1) % panelCount
+			m.focused = m.nextPanel()
 			if m.focused == panelURL {
 				var cmd tea.Cmd
 				m.url, cmd = m.url.Focus()
@@ -91,15 +138,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "shift+tab":
-			if m.focused == panelHeaders && m.headers.IsEditing() {
-				var cmd tea.Cmd
-				m.headers, cmd = m.headers.Update(msg)
-				return m, cmd
-			}
 			if m.focused == panelURL {
 				m.url = m.url.Blur()
 			}
-			m.focused = (m.focused - 1 + panelCount) % panelCount
+			m.focused = m.prevPanel()
 			if m.focused == panelURL {
 				var cmd tea.Cmd
 				m.url, cmd = m.url.Focus()
@@ -107,26 +149,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		default:
-			switch m.focused {
-			case panelMethod:
-				m.method = m.method.Update(msg)
-			case panelURL:
-				var cmd tea.Cmd
-				m.url, cmd = m.url.Update(msg)
-				return m, cmd
-			case panelHeaders:
-				var cmd tea.Cmd
-				m.headers, cmd = m.headers.Update(msg)
-				return m, cmd
-			case panelResponse:
-				var cmd tea.Cmd
-				m.response, cmd = m.response.Update(msg)
-				return m, cmd
-			}
+			return m.updateFocused(msg)
 		}
 	}
 
 	return m, nil
+}
+
+func (m Model) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	switch m.focused {
+	case panelMethod:
+		m.method = m.method.Update(msg.(tea.KeyMsg))
+	case panelURL:
+		m.url, cmd = m.url.Update(msg)
+	case panelHeaders:
+		m.headers, cmd = m.headers.Update(msg)
+	case panelBody:
+		m.body, cmd = m.body.Update(msg)
+	case panelResponse:
+		m.response, cmd = m.response.Update(msg)
+	}
+	return m, cmd
 }
 
 func (m Model) View() string {
@@ -137,20 +181,24 @@ func (m Model) View() string {
 	rightWidth := m.width - methodWidth
 	panelHeight := m.height - 1
 	bottomHeight := panelHeight - urlHeight
-	headersWidth := rightWidth / 2
-	responseWidth := rightWidth - headersWidth
+	leftWidth := rightWidth / 2
+	responseWidth := rightWidth - leftWidth
+	headersHeight := bottomHeight / 2
+	bodyHeight := bottomHeight - headersHeight
 
 	methodView := m.method.View(methodWidth, panelHeight, m.focused == panelMethod)
 	urlView := m.url.View(rightWidth, urlHeight, m.focused == panelURL)
-	headersView := m.headers.View(headersWidth, bottomHeight, m.focused == panelHeaders)
+	headersView := m.headers.View(leftWidth, headersHeight, m.focused == panelHeaders)
+	bodyView := m.body.View(leftWidth, bodyHeight, m.focused == panelBody, m.bodyActive())
 	responseView := m.response.View(responseWidth, bottomHeight, m.focused == panelResponse)
 
+	leftCol := lipgloss.JoinVertical(lipgloss.Left, headersView, bodyView)
 	rightCol := lipgloss.JoinVertical(lipgloss.Left,
 		urlView,
-		lipgloss.JoinHorizontal(lipgloss.Top, headersView, responseView),
+		lipgloss.JoinHorizontal(lipgloss.Top, leftCol, responseView),
 	)
 
-	hint := hintSt.Render("Tab · next panel   Ctrl+R · send   ↑↓ · select method / scroll   q · quit")
+	hint := hintSt.Render("Tab · next panel   Ctrl+R · send   i · infer schema (in BODY)   q · quit")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Top, methodView, rightCol),
