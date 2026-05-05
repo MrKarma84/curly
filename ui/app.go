@@ -14,8 +14,10 @@ const (
 	panelCount
 )
 
-const methodWidth = 14
-const topHeight = 3
+const (
+	methodWidth = 14
+	urlHeight   = 3
+)
 
 var hintSt = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 
@@ -30,7 +32,9 @@ type Model struct {
 }
 
 func New() Model {
-	return Model{}
+	return Model{
+		method: panels.NewMethodPanel(),
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -42,6 +46,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -50,6 +55,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focused = (m.focused + 1) % panelCount
 		case "shift+tab":
 			m.focused = (m.focused - 1 + panelCount) % panelCount
+		default:
+			if m.focused == panelMethod {
+				m.method = m.method.Update(msg)
+			}
 		}
 	}
 	return m, nil
@@ -60,21 +69,27 @@ func (m Model) View() string {
 		return ""
 	}
 
-	bottomHeight := m.height - topHeight - 1
-	headersWidth := m.width / 2
-	responseWidth := m.width - headersWidth
+	rightWidth := m.width - methodWidth
+	panelHeight := m.height - 1 // -1 for hint line
+	bottomHeight := panelHeight - urlHeight
+	headersWidth := rightWidth / 2
+	responseWidth := rightWidth - headersWidth
 
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.method.View(methodWidth, topHeight, m.focused == panelMethod),
-		m.url.View(m.width-methodWidth, topHeight, m.focused == panelURL),
+	methodView := m.method.View(methodWidth, panelHeight, m.focused == panelMethod)
+
+	urlView := m.url.View(rightWidth, urlHeight, m.focused == panelURL)
+	headersView := m.headers.View(headersWidth, bottomHeight, m.focused == panelHeaders)
+	responseView := m.response.View(responseWidth, bottomHeight, m.focused == panelResponse)
+
+	rightCol := lipgloss.JoinVertical(lipgloss.Left,
+		urlView,
+		lipgloss.JoinHorizontal(lipgloss.Top, headersView, responseView),
 	)
 
-	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.headers.View(headersWidth, bottomHeight, m.focused == panelHeaders),
-		m.response.View(responseWidth, bottomHeight, m.focused == panelResponse),
+	hint := hintSt.Render("Tab · next panel   ↑↓ · select method   q · quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		lipgloss.JoinHorizontal(lipgloss.Top, methodView, rightCol),
+		hint,
 	)
-
-	hint := hintSt.Render("Tab · next panel   Shift+Tab · prev   q · quit")
-
-	return lipgloss.JoinVertical(lipgloss.Left, topRow, bottomRow, hint)
 }
