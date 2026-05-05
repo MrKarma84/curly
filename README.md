@@ -217,6 +217,59 @@ func (p *MethodPanel) Update(msg tea.KeyMsg) {
 }
 ```
 
+### Goroutines & async commands (Bubble Tea)
+
+In a TUI, you can't block the UI thread to wait for an HTTP response.
+Bubble Tea solves this with **commands** (`tea.Cmd`) — functions that run in the background
+and send a message when done:
+
+```go
+func doRequest(method, url string, headers map[string]string) tea.Cmd {
+    return func() tea.Msg {           // ← runs in a goroutine automatically
+        resp := httpclient.Send(...)  // blocks here, but UI stays responsive
+        return ResponseMsg(resp)      // sends the result back to Update()
+    }
+}
+
+// When the goroutine finishes, Update() receives:
+case ResponseMsg:
+    m.response = m.response.SetResponse(httpclient.Response(msg))
+```
+
+### defer
+
+`defer` schedules a call to run when the enclosing function returns, even on error:
+
+```go
+resp, err := client.Do(req)
+defer resp.Body.Close()  // always runs — without this, the connection leaks
+```
+
+### Type assertion
+
+Extracting a concrete type from an interface:
+
+```go
+key, ok := msg.(tea.KeyMsg)  // "is msg a tea.KeyMsg?"
+if !ok {
+    return p, nil  // nope — ignore it
+}
+// key is now usable as tea.KeyMsg
+```
+
+The two-value form (`value, ok`) never panics. The single-value form panics if the type doesn't match.
+
+### Slice manipulation
+
+Removing an element at index `i` — the standard Go pattern:
+
+```go
+s = append(s[:i], s[i+1:]...)
+// s[:i]   → everything before i
+// s[i+1:] → everything after i
+// ...     → unpacks the slice as individual arguments to append()
+```
+
 ### Lip Gloss — terminal styling
 
 Lip Gloss lets you style terminal output like CSS:
@@ -240,9 +293,9 @@ output := style.Render("hello")        // returns a styled string
 | 1 | Scaffolding & Hello World TUI | ✅ done |
 | 2 | Basic layout + panel navigation | ✅ done |
 | 3 | HTTP method selector | ✅ done |
-| 4 | URL input + send GET request | 🔜 next |
-| 5 | Headers editor | ⬜ |
-| 6 | Body + schema detection | ⬜ |
+| 4 | URL input + send GET request | ✅ done |
+| 5 | Headers editor | ✅ done |
+| 6 | Body + schema detection | 🔜 next |
 | 7 | Navigable history | ⬜ |
 | 8 | Replay & diff | ⬜ |
 | 9 | Collections | ⬜ |
