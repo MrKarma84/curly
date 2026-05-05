@@ -5,12 +5,13 @@ A keyboard-driven TUI HTTP client — a terminal alternative to Insomnia/Postman
 ```
 ╭────────╮╭──────────────────────────────────────────╮
 │ METHOD ││ URL                                      │
-╰────────╯╰──────────────────────────────────────────╯
-╭─────────────────────────╮╭────────────────────────╮
-│ HEADERS                 ││ RESPONSE               │
-│                         ││                        │
-│                         ││                        │
-╰─────────────────────────╯╰────────────────────────╯
+│        │╰──────────────────────────────────────────╯
+│ ► GET  │╭─────────────────────╮╭───────────────────╮
+│   POST ││ HEADERS             ││ RESPONSE          │
+│   PUT  ││                     ││                   │
+│   PATCH│╰─────────────────────╯╰───────────────────╯
+│ DELETE │
+╰────────╯
 ```
 
 **Key differentiators:** request chaining · replay diff · Postman/Insomnia/Bruno import
@@ -166,6 +167,56 @@ m.focused = (m.focused + 1) % panelCount
 // 0 → 1 → 2 → 3 → 0 → 1 → …
 ```
 
+### Slices
+
+A **slice** is an ordered, resizable list — the most common collection in Go:
+
+```go
+methods := []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
+//          ↑ type: slice of strings
+
+methods[0]        // "GET"   — access by index
+len(methods)      // 5       — number of elements
+
+// loop over a slice with range:
+for i, method := range methods {
+    // i = index (0, 1, 2…), method = value ("GET", "POST"…)
+}
+```
+
+### Maps
+
+A **map** is a key → value store, like a dictionary in Python or an object in JS:
+
+```go
+var methodColors = map[string]lipgloss.Color{
+//                     ↑ key type   ↑ value type
+    "GET":    "#10B981",  // green
+    "POST":   "#F59E0B",  // yellow
+    "DELETE": "#EF4444",  // red
+}
+
+color := methodColors["GET"]  // look up a value by key
+```
+
+### Immutability in Bubble Tea
+
+In Bubble Tea, `Update` always returns a **new** model instead of modifying the current one.
+This is why `MethodPanel.Update` returns a `MethodPanel`:
+
+```go
+// ✅ correct Bubble Tea style — return a new copy
+func (p MethodPanel) Update(msg tea.KeyMsg) MethodPanel {
+    p.selected = newIndex   // modifies the copy, not the original
+    return p
+}
+
+// ❌ would not work — Bubble Tea models are values, not pointers
+func (p *MethodPanel) Update(msg tea.KeyMsg) {
+    p.selected = newIndex
+}
+```
+
 ### Lip Gloss — terminal styling
 
 Lip Gloss lets you style terminal output like CSS:
@@ -188,8 +239,8 @@ output := style.Render("hello")        // returns a styled string
 |------|---------|--------|
 | 1 | Scaffolding & Hello World TUI | ✅ done |
 | 2 | Basic layout + panel navigation | ✅ done |
-| 3 | HTTP method selector | 🔜 next |
-| 4 | URL input + send GET request | ⬜ |
+| 3 | HTTP method selector | ✅ done |
+| 4 | URL input + send GET request | 🔜 next |
 | 5 | Headers editor | ⬜ |
 | 6 | Body + schema detection | ⬜ |
 | 7 | Navigable history | ⬜ |
