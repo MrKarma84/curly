@@ -24,9 +24,9 @@ var hintSt = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 
 type ResponseMsg httpclient.Response
 
-func doRequest(method, url string) tea.Cmd {
+func doRequest(method, url string, headers map[string]string) tea.Cmd {
 	return func() tea.Msg {
-		return ResponseMsg(httpclient.Send(method, url, nil))
+		return ResponseMsg(httpclient.Send(method, url, headers))
 	}
 }
 
@@ -42,8 +42,9 @@ type Model struct {
 
 func New() Model {
 	return Model{
-		method: panels.NewMethodPanel(),
-		url:    panels.NewURLPanel(),
+		method:  panels.NewMethodPanel(),
+		url:     panels.NewURLPanel(),
+		headers: panels.NewHeadersPanel(),
 	}
 }
 
@@ -71,9 +72,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.response = m.response.SetLoading()
-			return m, doRequest(m.method.Selected(), url)
+			return m, doRequest(m.method.Selected(), url, m.headers.Headers())
 
 		case "tab":
+			if m.focused == panelHeaders && m.headers.IsEditing() {
+				var cmd tea.Cmd
+				m.headers, cmd = m.headers.Update(msg)
+				return m, cmd
+			}
 			if m.focused == panelURL {
 				m.url = m.url.Blur()
 			}
@@ -85,6 +91,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "shift+tab":
+			if m.focused == panelHeaders && m.headers.IsEditing() {
+				var cmd tea.Cmd
+				m.headers, cmd = m.headers.Update(msg)
+				return m, cmd
+			}
 			if m.focused == panelURL {
 				m.url = m.url.Blur()
 			}
@@ -102,6 +113,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case panelURL:
 				var cmd tea.Cmd
 				m.url, cmd = m.url.Update(msg)
+				return m, cmd
+			case panelHeaders:
+				var cmd tea.Cmd
+				m.headers, cmd = m.headers.Update(msg)
 				return m, cmd
 			case panelResponse:
 				var cmd tea.Cmd
