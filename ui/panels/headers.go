@@ -28,6 +28,14 @@ type HeadersPanel struct {
 	valInput   textinput.Model
 }
 
+func NewHeadersPanelFrom(headers map[string]string) HeadersPanel {
+	p := NewHeadersPanel()
+	for k, v := range headers {
+		p.headers = append(p.headers, Header{Key: k, Value: v})
+	}
+	return p
+}
+
 func NewHeadersPanel() HeadersPanel {
 	ki := textinput.New()
 	ki.Placeholder = "Header-Name"

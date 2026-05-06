@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"fmt"
+	"time"
+
+	"github.com/MrKarma84/curly/history"
 	"github.com/MrKarma84/curly/httpclient"
 	"github.com/MrKarma84/curly/ui/panels"
 	tea "github.com/charmbracelet/bubbletea"
@@ -51,6 +55,13 @@ type Model struct {
 	headers  panels.HeadersPanel
 	body     panels.BodyPanel
 	response panels.ResponsePanel
+
+	store      *history.Store
+	histIdx    int // -1 = live; ≥0 = browsing history (0 = most recent)
+	liveMethod string
+	liveURL    string
+	liveHdrs   map[string]string
+	liveBody   string
 }
 
 func New() Model {
@@ -59,6 +70,8 @@ func New() Model {
 		url:     panels.NewURLPanel(),
 		headers: panels.NewHeadersPanel(),
 		body:    panels.NewBodyPanel(),
+		store:   history.New(),
+		histIdx: -1,
 	}
 }
 
@@ -119,7 +132,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.bodyActive() {
 				body = m.body.Body()
 			}
+			m.histIdx = -1
+			m.store.Add(history.Entry{
+				Timestamp: time.Now(),
+				Method:    m.method.Selected(),
+				URL:       url,
+				Headers:   m.headers.Headers(),
+				Body:      body,
+			})
 			return m, doRequest(m.method.Selected(), url, body, m.headers.Headers())
+
+		case "ctrl+p":
+			if m.store.Len() == 0 {
+				return m, nil
+			}
+			if m.histIdx == -1 {
+				m.liveMethod = m.method.Selected()
+				m.liveURL = m.url.Value()
+				m.liveHdrs = m.headers.Headers()
+				m.liveBody = ""
+				if m.bodyActive() {
+					m.liveBody = m.body.Body()
+				}
+				m.histIdx = 0
+			} else if m.histIdx < m.store.Len()-1 {
+				m.histIdx++
+			} else {
+				return m, nil
+			}
+			return m.applyHistoryEntry(m.histIdx)
+
+		case "ctrl+n":
+			if m.histIdx == -1 {
+				return m, nil
+			}
+			if m.histIdx > 0 {
+				m.histIdx--
+				return m.applyHistoryEntry(m.histIdx)
+			}
+			m.histIdx = -1
+			m.method = m.method.SetSelected(m.liveMethod)
+			m.url = m.url.SetValue(m.liveURL)
+			m.headers = panels.NewHeadersPanelFrom(m.liveHdrs)
+			m.body = panels.NewBodyPanel()
+			if m.liveBody != "" {
+				m.body = m.body.InferFrom(m.liveBody)
+			}
+			return m, nil
 
 		case "i":
 			if m.focused == panelBody && m.bodyActive() && m.url.Value() != "" {
@@ -153,6 +212,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	return m, nil
+}
+
+func (m Model) applyHistoryEntry(idx int) (tea.Model, tea.Cmd) {
+	e := m.store.Get(idx)
+	m.method = m.method.SetSelected(e.Method)
+	m.url = m.url.SetValue(e.URL)
+	m.headers = panels.NewHeadersPanelFrom(e.Headers)
+	m.body = panels.NewBodyPanel()
+	if e.Body != "" {
+		m.body = m.body.InferFrom(e.Body)
+	}
 	return m, nil
 }
 
@@ -198,7 +269,11 @@ func (m Model) View() string {
 		lipgloss.JoinHorizontal(lipgloss.Top, leftCol, responseView),
 	)
 
-	hint := hintSt.Render("Tab · next panel   Ctrl+R · send   i · infer schema (in BODY)   q · quit")
+	hintText := "Tab · next panel   Ctrl+R · send   Ctrl+P/N · history   i · infer schema (body)   q · quit"
+	if m.histIdx >= 0 {
+		hintText = fmt.Sprintf("[history %d/%d]   Ctrl+P · older   Ctrl+N · newer / back to live", m.histIdx+1, m.store.Len())
+	}
+	hint := hintSt.Render(hintText)
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Top, methodView, rightCol),

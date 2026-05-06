@@ -28,6 +28,16 @@ func (p MethodPanel) Selected() string {
 	return p.methods[p.selected]
 }
 
+func (p MethodPanel) SetSelected(method string) MethodPanel {
+	for i, m := range p.methods {
+		if m == method {
+			p.selected = i
+			return p
+		}
+	}
+	return p
+}
+
 func (p MethodPanel) Update(msg tea.KeyMsg) MethodPanel {
 	switch msg.String() {
 	case "up", "k":
