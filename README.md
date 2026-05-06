@@ -38,8 +38,8 @@ go run .
 | `↑` `↓` | Navigate lists |
 | `Enter` | Select / confirm |
 | `Ctrl+R` | Send request |
-| `Ctrl+P` | History — go to older request |
-| `Ctrl+N` | History — go to newer request / back to live |
+| `PgUp` | History — go to older request |
+| `PgDn` | History — go to newer request / back to live |
 | `i` | Infer body schema from URL (in BODY panel) |
 | `Ctrl+S` | Save to collection _(coming soon)_ |
 | `Ctrl+D` | Replay diff _(coming soon)_ |
