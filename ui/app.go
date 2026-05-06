@@ -142,7 +142,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			return m, doRequest(m.method.Selected(), url, body, m.headers.Headers())
 
-		case "ctrl+p":
+		case "ctrl+up":
 			if m.store.Len() == 0 {
 				return m, nil
 			}
@@ -162,7 +162,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.applyHistoryEntry(m.histIdx)
 
-		case "ctrl+n":
+		case "ctrl+down":
 			if m.histIdx == -1 {
 				return m, nil
 			}
@@ -269,9 +269,9 @@ func (m Model) View() string {
 		lipgloss.JoinHorizontal(lipgloss.Top, leftCol, responseView),
 	)
 
-	hintText := "Tab · next panel   Ctrl+R · send   Ctrl+P/N · history   i · infer schema (body)   q · quit"
+	hintText := "Tab · next panel   Ctrl+R · send   Ctrl+↑/↓ · history   i · infer schema (body)   q · quit"
 	if m.histIdx >= 0 {
-		hintText = fmt.Sprintf("[history %d/%d]   Ctrl+P · older   Ctrl+N · newer / back to live", m.histIdx+1, m.store.Len())
+		hintText = fmt.Sprintf("[history %d/%d]   Ctrl+↑ · older   Ctrl+↓ · newer / back to live", m.histIdx+1, m.store.Len())
 	}
 	hint := hintSt.Render(hintText)
 
