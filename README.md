@@ -38,12 +38,13 @@ go run .
 | `↑` `↓` | Navigate lists |
 | `Enter` | Select / confirm |
 | `Ctrl+R` | Send request |
-| `Ctrl+S` | Save to collection |
-| `Ctrl+N` | New request |
-| `Ctrl+P` | History — previous request |
-| `Ctrl+D` | Replay diff |
-| `Ctrl+W` | Watch mode |
-| `Ctrl+L` | Chain request |
+| `Ctrl+P` | History — go to older request |
+| `Ctrl+N` | History — go to newer request / back to live |
+| `i` | Infer body schema from URL (in BODY panel) |
+| `Ctrl+S` | Save to collection _(coming soon)_ |
+| `Ctrl+D` | Replay diff _(coming soon)_ |
+| `Ctrl+W` | Watch mode _(coming soon)_ |
+| `Ctrl+L` | Chain request _(coming soon)_ |
 | `?` | Help |
 | `q` / `Ctrl+C` | Quit |
 
@@ -61,7 +62,10 @@ curly/
 │       ├── method.go     # HTTP method selector (GET, POST, PUT…)
 │       ├── url.go        # URL input field
 │       ├── headers.go    # Request headers editor
+│       ├── body.go       # Request body editor with schema inference
 │       └── response.go   # Response display
+├── history/
+│   └── store.go          # Request history (persisted to ~/.curly/history.json)
 ├── go.mod                # Go module definition (like package.json in Node)
 └── go.sum                # Dependency checksums (auto-generated, don't edit)
 ```
@@ -284,6 +288,85 @@ style := lipgloss.NewStyle().
 output := style.Render("hello")        // returns a styled string
 ```
 
+### Reading and writing files — `os` and `filepath`
+
+The history is persisted in `~/.curly/history.json` between sessions.
+`os` is Go's standard library for interacting with the operating system:
+
+```go
+// Find the user's home directory (~)
+home, err := os.UserHomeDir()   // "/home/alice"
+
+// Create all missing directories in a path (like mkdir -p)
+os.MkdirAll("/home/alice/.curly", 0o700)
+//                                 ↑ Unix permissions: owner read+write+exec only
+
+// Write a file (creates or overwrites)
+os.WriteFile(path, data, 0o600)
+//                         ↑ owner read+write only (no exec — it's data, not a script)
+
+// Read a file into a []byte slice
+data, err := os.ReadFile(path)
+
+// Check for a specific error — "does the file exist?"
+if os.IsNotExist(err) {
+    // first run — no history yet, start fresh
+}
+```
+
+`filepath.Join` builds paths safely for the current OS (handles `/` vs `\`):
+
+```go
+path := filepath.Join(home, ".curly", "history.json")
+// → "/home/alice/.curly/history.json"  on Linux/macOS
+// → "C:\Users\Alice\.curly\history.json"  on Windows
+```
+
+### JSON serialisation — `encoding/json`
+
+Go can convert any struct to JSON and back automatically, using **struct tags**:
+
+```go
+type Entry struct {
+    Timestamp time.Time         `json:"timestamp"`
+    Method    string            `json:"method"`
+    URL       string            `json:"url"`
+    Headers   map[string]string `json:"headers,omitempty"`
+    //                                          ↑ omit this field if the map is empty
+    Body      string            `json:"body,omitempty"`
+}
+```
+
+The backtick strings after field types are **struct tags** — metadata read at runtime by `encoding/json`:
+
+```go
+// Struct → JSON bytes
+data, err := json.MarshalIndent(store, "", "  ")
+// {"entries": [{"timestamp": "2026-05-06T…", "method": "GET", …}]}
+
+// JSON bytes → Struct (fills in the fields automatically)
+err := json.Unmarshal(data, &store)
+```
+
+### Pointers — when you need to share state
+
+Until now, every panel was a **value** — passed by copy in Bubble Tea.
+The history `Store` is different: it must be **shared** across all copies of `Model`
+(otherwise saving in one copy wouldn't be visible in the next).
+
+```go
+type Model struct {
+    // ...
+    store *history.Store  // ← pointer: all copies of Model point to the same Store
+}
+
+// Calling Add() through a pointer modifies the original:
+m.store.Add(entry)  // ✅ the real store is updated
+```
+
+Rule of thumb: use a pointer (`*T`) when you need mutations to be visible everywhere,
+use a value (`T`) when you want an independent copy.
+
 ---
 
 ## Development roadmap
@@ -295,9 +378,9 @@ output := style.Render("hello")        // returns a styled string
 | 3 | HTTP method selector | ✅ done |
 | 4 | URL input + send GET request | ✅ done |
 | 5 | Headers editor | ✅ done |
-| 6 | Body + schema detection | 🔜 next |
-| 7 | Navigable history | ⬜ |
-| 8 | Replay & diff | ⬜ |
+| 6 | Body + schema detection | ✅ done |
+| 7 | Navigable history | ✅ done |
+| 8 | Replay & diff | 🔜 next |
 | 9 | Collections | ⬜ |
 | 10 | Environment variables | ⬜ |
 | 11 | Request chaining | ⬜ |

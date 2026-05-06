@@ -21,6 +21,11 @@ func (p URLPanel) Value() string {
 	return p.input.Value()
 }
 
+func (p URLPanel) SetValue(url string) URLPanel {
+	p.input.SetValue(url)
+	return p
+}
+
 func (p URLPanel) Focus() (URLPanel, tea.Cmd) {
 	cmd := p.input.Focus()
 	return p, cmd
